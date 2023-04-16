@@ -41,9 +41,12 @@ DEFAULT_SUMMARIZE_PARAMS = {
     'bad_words': ["\n", '"', "*", "[", "]", "{", "}", ":", "(", ")", "<", ">", "Â"]
 }
 
+
 class SplitArgs(argparse.Action):
     def __call__(self, parser, namespace, values, option_string=None):
-        setattr(namespace, self.dest, values.replace('"', '').replace("'", '').split(','))
+        setattr(namespace, self.dest, values.replace(
+            '"', '').replace("'", '').split(','))
+
 
 # Script arguments
 parser = argparse.ArgumentParser(
@@ -70,20 +73,20 @@ parser.add_argument('--prompt-model',
 sd_group = parser.add_mutually_exclusive_group()
 local_sd = sd_group.add_argument_group('sd-local')
 local_sd.add_argument('--sd-model',
-                    help="Load a custom SD image generation model")
+                      help="Load a custom SD image generation model")
 local_sd.add_argument('--sd-cpu',
-                    help="Force the SD pipeline to run on the CPU")
+                      help="Force the SD pipeline to run on the CPU")
 remote_sd = sd_group.add_argument_group('sd-remote')
 remote_sd.add_argument('--sd-remote', action='store_true',
-                    help="Use a remote backend for SD")
+                       help="Use a remote backend for SD")
 remote_sd.add_argument('--sd-remote-host', type=str,
-                    help="Specify the host of the remote SD backend")
+                       help="Specify the host of the remote SD backend")
 remote_sd.add_argument('--sd-remote-port', type=int,
-                    help="Specify the port of the remote SD backend")
+                       help="Specify the port of the remote SD backend")
 remote_sd.add_argument('--sd-remote-ssl', action='store_true',
-                    help="Use SSL for the remote SD backend")
+                       help="Use SSL for the remote SD backend")
 remote_sd.add_argument('--sd-remote-auth', type=str,
-                    help="Specify the username:password for the remote SD backend (if required)")
+                       help="Specify the username:password for the remote SD backend (if required)")
 
 parser.add_argument('--enable-modules', action=SplitArgs, default=[],
                     help="Override a list of enabled modules")
@@ -105,7 +108,8 @@ sd_remote_port = args.sd_remote_port if args.sd_remote_port else DEFAULT_REMOTE_
 sd_remote_ssl = args.sd_remote_ssl
 sd_remote_auth = args.sd_remote_auth
 
-modules = args.enable_modules if args.enable_modules and len(args.enable_modules) > 0 else []
+modules = args.enable_modules if args.enable_modules and len(
+    args.enable_modules) > 0 else []
 
 if len(modules) == 0:
     print(f'{Fore.RED}{Style.BRIGHT}You did not select any modules to run! Choose them by adding an --enable-modules option')
@@ -120,18 +124,23 @@ if 'caption' in modules:
     print('Initializing an image captioning model...')
     captioning_processor = AutoProcessor.from_pretrained(captioning_model)
     if 'blip' in captioning_model:
-        captioning_transformer = BlipForConditionalGeneration.from_pretrained(captioning_model, torch_dtype=torch_dtype).to(device)
+        captioning_transformer = BlipForConditionalGeneration.from_pretrained(
+            captioning_model, torch_dtype=torch_dtype).to(device)
     else:
-        captioning_transformer = AutoModelForCausalLM.from_pretrained(captioning_model, torch_dtype=torch_dtype).to(device)
+        captioning_transformer = AutoModelForCausalLM.from_pretrained(
+            captioning_model, torch_dtype=torch_dtype).to(device)
 
 if 'summarize' in modules:
     print('Initializing a text summarization model...')
-    summarization_tokenizer = AutoTokenizer.from_pretrained(summarization_model)
-    summarization_transformer = AutoModelForSeq2SeqLM.from_pretrained(summarization_model, torch_dtype=torch_dtype).to(device)
+    summarization_tokenizer = AutoTokenizer.from_pretrained(
+        summarization_model)
+    summarization_transformer = AutoModelForSeq2SeqLM.from_pretrained(
+        summarization_model, torch_dtype=torch_dtype).to(device)
 
 if 'classify' in modules:
     print('Initializing a sentiment classification pipeline...')
-    classification_pipe = pipeline("text-classification", model=classification_model, top_k=None, device=device, torch_dtype=torch_dtype)
+    classification_pipe = pipeline(
+        "text-classification", model=classification_model, top_k=None, device=device, torch_dtype=torch_dtype)
 
 if 'keywords' in modules:
     print('Initializing a keyword extraction pipeline...')
@@ -143,7 +152,14 @@ if 'prompt' in modules:
     gpt_tokenizer = GPT2Tokenizer.from_pretrained('distilgpt2')
     gpt_tokenizer.add_special_tokens({'pad_token': '[PAD]'})
     gpt_model = AutoModelForCausalLM.from_pretrained(prompt_model)
-    prompt_generator = pipeline('text-generation', model=gpt_model, tokenizer=gpt_tokenizer)
+    prompt_generator = pipeline(
+        'text-generation', model=gpt_model, tokenizer=gpt_tokenizer)
+
+if 'buttplug' in modules:
+    print('Initializing buttplug io client')
+    from modules.buttplug import ButtPlugDummyModule
+    bp_module = ButtPlugDummyModule(0)
+    bp_module.connect()
 
 if 'sd' in modules and not sd_use_remote:
     from diffusers import StableDiffusionPipeline
@@ -152,15 +168,18 @@ if 'sd' in modules and not sd_use_remote:
     sd_device_string = "cuda" if torch.cuda.is_available() and not args.sd_cpu else "cpu"
     sd_device = torch.device(sd_device_string)
     sd_torch_dtype = torch.float32 if sd_device_string == "cpu" else torch.float16
-    sd_pipe = StableDiffusionPipeline.from_pretrained(sd_model, custom_pipeline="lpw_stable_diffusion", torch_dtype=sd_torch_dtype).to(sd_device)
+    sd_pipe = StableDiffusionPipeline.from_pretrained(
+        sd_model, custom_pipeline="lpw_stable_diffusion", torch_dtype=sd_torch_dtype).to(sd_device)
     sd_pipe.safety_checker = lambda images, clip_input: (images, False)
     sd_pipe.enable_attention_slicing()
     # pipe.scheduler = KarrasVeScheduler.from_config(pipe.scheduler.config)
-    sd_pipe.scheduler = EulerAncestralDiscreteScheduler.from_config(sd_pipe.scheduler.config)
+    sd_pipe.scheduler = EulerAncestralDiscreteScheduler.from_config(
+        sd_pipe.scheduler.config)
 elif 'sd' in modules and sd_use_remote:
     print('Initializing Stable Diffusion connection')
     try:
-        sd_remote = webuiapi.WebUIApi(host=sd_remote_host, port=sd_remote_port, use_https=sd_remote_ssl)
+        sd_remote = webuiapi.WebUIApi(
+            host=sd_remote_host, port=sd_remote_port, use_https=sd_remote_ssl)
         if sd_remote_auth:
             username, password = sd_remote_auth.split(':')
             sd_remote.set_auth(username, password)
@@ -189,7 +208,7 @@ indicator_list = ['female', 'girl', 'male', 'boy', 'woman', 'man', 'hair', 'eyes
 
 # Flask init
 app = Flask(__name__)
-CORS(app) # allow cross-domain requests
+CORS(app)  # allow cross-domain requests
 app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024
 
 
@@ -206,13 +225,16 @@ def require_module(name):
 
 # AI stuff
 def classify_text(text: str) -> list:
-    output = classification_pipe(text, truncation=True, max_length=classification_pipe.model.config.max_position_embeddings)[0]
+    output = classification_pipe(
+        text, truncation=True, max_length=classification_pipe.model.config.max_position_embeddings)[0]
     return sorted(output, key=lambda x: x['score'], reverse=True)
 
 
 def caption_image(raw_image: Image, max_new_tokens: int = 20) -> str:
-    inputs = captioning_processor(raw_image.convert('RGB'), return_tensors="pt").to(device, torch_dtype)
-    outputs = captioning_transformer.generate(**inputs, max_new_tokens=max_new_tokens)
+    inputs = captioning_processor(raw_image.convert(
+        'RGB'), return_tensors="pt").to(device, torch_dtype)
+    outputs = captioning_transformer.generate(
+        **inputs, max_new_tokens=max_new_tokens)
     caption = captioning_processor.decode(outputs[0], skip_special_tokens=True)
     return caption
 
@@ -305,7 +327,7 @@ def generate_image(input: str, steps: int = 30, scale: int = 6, sampler: str = '
 def image_to_base64(image: Image):
     buffered = BytesIO()
     image.save(buffered, format="JPEG")
-    img_str = base64.b64encode(buffered.getvalue()).decode("utf-8") 
+    img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
     return img_str
 
 
@@ -442,11 +464,13 @@ def api_image():
         data['model'] = None
 
     try:
-        image = generate_image(data['prompt'], data['steps'], data['scale'], data['sampler'], data['model'])
+        image = generate_image(
+            data['prompt'], data['steps'], data['scale'], data['sampler'], data['model'])
         base64image = image_to_base64(image)
         return jsonify({'image': base64image})
     except RuntimeError as e:
         abort(400, str(e))
+
 
 @app.route('/api/image/model', methods=['POST'])
 @require_module('sd')
@@ -460,11 +484,12 @@ def api_image_model_set():
 
     old_model = sd_remote.util_get_current_model()
     sd_remote.util_set_model(data['model'], find_closest=False)
-    #sd_remote.util_set_model(data['model'])
+    # sd_remote.util_set_model(data['model'])
     sd_remote.util_wait_for_ready()
     new_model = sd_remote.util_get_current_model()
 
     return jsonify({'previous_model': old_model, 'current_model': new_model})
+
 
 @app.route('/api/image/model', methods=['GET'])
 @require_module('sd')
@@ -476,6 +501,7 @@ def api_image_model_get():
 
     return jsonify({'model': model})
 
+
 @app.route('/api/image/models', methods=['GET'])
 @require_module('sd')
 def api_image_models():
@@ -483,18 +509,43 @@ def api_image_models():
 
     if sd_use_remote:
         models = sd_remote.util_get_model_names()
-    
+
     return jsonify({'models': models})
+
 
 @app.route('/api/image/samplers', methods=['GET'])
 @require_module('sd')
 def api_image_samplers():
     samplers = ['Euler a']
-    
+
     if sd_use_remote:
         samplers = [sampler['name'] for sampler in sd_remote.get_samplers()]
-    
+
     return jsonify({'samplers': samplers})
+
+
+# ===================================== Buttplug =====================================
+
+@app.route('/api/bup/set', methods=['POST'])
+@require_module('buttplug')
+def api_buttplug_set():
+    try:
+        data = request.get_json()
+        bp_module.set(data['v'])
+    except Exception as e:
+        print(e)
+        return jsonify({'success': False, 'message': str(e)})
+    # return a response that indicates success
+    return jsonify({'success': True})
+
+
+@app.route('/api/bup/get', methods=['GET'])
+@require_module('buttplug')
+def api_buttplug_get():
+    return jsonify({'v': bp_module.get()})
+
+
+# ===================================== Modules =====================================
 
 @app.route('/api/modules', methods=['GET'])
 def get_modules():
@@ -505,12 +556,14 @@ if args.share:
     from flask_cloudflared import _run_cloudflared
     import inspect
     sig = inspect.signature(_run_cloudflared)
-    sum = sum(1 for param in sig.parameters.values() if param.kind == param.POSITIONAL_OR_KEYWORD)
+    sum = sum(1 for param in sig.parameters.values()
+              if param.kind == param.POSITIONAL_OR_KEYWORD)
     if sum > 1:
         metrics_port = randint(8100, 9000)
         cloudflare = _run_cloudflared(port, metrics_port)
     else:
         cloudflare = _run_cloudflared(port)
     print("Running on", cloudflare)
+
 
 app.run(host=host, port=port)
